@@ -1,28 +1,17 @@
 import * as THREE from 'three'
 import * as dat from 'lil-gui'
-import * as CANNON from 'cannon-es'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
 let canvas, renderer, scene, camera, controls                           // scene config and controls
 let sizes, aspectRatio, mouse, clock, oldElapsedTime                    // scene parameters and update variables
-let world, defaultMaterial, defaultContactMaterial, block, blockFired, moveBlock   // physics 
 let normalMaterial, transparentMaterial, videoMaterial                  // materials
 let video, videoWholeTex, planeGeometry, planeVideoMesh                 // webcam video
 let debugGui                                                            // UI
 let ambientLight                                                        // lights
 
-let objectsToUpdate = []        // list of physics objects to update
-let videoCubes = []             // list of physics cubes with webcam texture
-
 // Array to store parameters used in the debug UI
 const parameters = {
-    testWebcam: false,
-    orbitControls: true,
-    autoRotate: true,
-    xPixels: 16,
-    yPixels: 9,
-    resetBoxes: resetBoxes,
-    moveBlock: fireBlock
+    testWebcam: false
 }
 
 init()  // initialises variables and calls all other initialisation functions
@@ -31,8 +20,6 @@ addSceneElements()      // adds scene elements (wall, cubes)
 function init(){
     // Master function to initialise variables and call other initialisation functions
     mouse = new THREE.Vector2()
-    blockFired = false
-    moveBlock = false
 
     //// Screen
     sizes = { width: window.innerWidth, height: window.innerHeight }
@@ -84,33 +71,10 @@ function initGui(){
 
     debugGui = new dat.GUI()
     debugGui.add(parameters, 'testWebcam').onChange( function() { getWebcam(parameters.testWebcam)})
-    debugGui.add(parameters, 'orbitControls').onChange( function(){ controls.enabled = parameters.orbitControls } )
-    debugGui.add(parameters, 'autoRotate').onChange( function(){ controls.autoRotate = parameters.autoRotate } )
-    debugGui.add(parameters, 'resetBoxes')
-    debugGui.add(parameters, 'moveBlock')
 
     //debugGui.hide()
 }
 
-function initPhysics(){
-    // Initialise the physics world. More information can be found here: https://schteppe.github.io/cannon.js/docs/
-
-    world = new CANNON.World()
-    world.broadphase = new CANNON.SAPBroadphase(world)
-
-    world.gravity = new CANNON.Vec3(0, -0.5, 0)
-
-    defaultMaterial = new CANNON.Material('default')
-    defaultContactMaterial = new CANNON.ContactMaterial(
-        defaultMaterial,
-        defaultMaterial,
-        {
-            friction: 0.1,
-            restitution: 0.7
-        }
-    )
-    world.defaultContactMaterial = defaultContactMaterial
-}
 
 function initWebcam(){
     // Initialises all components needed to access the webcam
@@ -126,15 +90,6 @@ function initWebcam(){
     videoMaterial = new THREE.MeshStandardMaterial({ map: videoWholeTex, side: THREE.DoubleSide })
 
     getWebcam(true) // Starts the webcam source, set true when testing and false when deploying to media wall
-
-}
-
-function getWebcam(testWebcam){
-    //// Ensures the current device has an accessible webcam, sets parameters, and starts webcam
-      // When deployed on the media wall, the program will have to access the webcam in a different way than on your home PC
-      // Set testWebcam to true when testing at home and set to false when deploying to the media wall
-
-    getWebcam(true)
 
 }
 
@@ -182,90 +137,26 @@ function getWebcam(testWebcam){
 }
 
 function addSceneElements(){
-    // Adds all the elements to the scene
-
-    createStaticBox(new THREE.Vector3(0, -5, 0), new THREE.Vector3(100, 0.1, 20), normalMaterial) // floor
-    createStaticBox(new THREE.Vector3(0, 10, 0), new THREE.Vector3(100, 0.1, 20), normalMaterial) // ceiling
-    createStaticBox(new THREE.Vector3(15, 0, 0), new THREE.Vector3(0.1, 20, 20), normalMaterial)  // right wall
-    createStaticBox(new THREE.Vector3(-15, 0, 0), new THREE.Vector3(0.1, 20, 20), normalMaterial)  // left wall
-    createStaticBox(new THREE.Vector3(0, 0, -10), new THREE.Vector3(100, 20, 0.1), normalMaterial)  // back wall
-    createStaticBox(new THREE.Vector3(0, 0, 10), new THREE.Vector3(100, 20, 0.1), transparentMaterial)  // front wall
-
-    block = createKinematicBox(new THREE.Vector3(0, -2, -10), new THREE.Vector3(8, 5, 10), transparentMaterial) // block to simulate explosion
-
-    for(var x = 0 ; x < parameters.xPixels ; x++){      // spawns a grid of cubes with the video texture
-        for(var y = 0; y < parameters.yPixels; y++){
-            videoCubes.push(createDynamicBox(new THREE.Vector3(x - parameters.xPixels / 2, y - parameters.yPixels / 2, 0), new THREE.Vector3(1, 1, 1), videoMaterial, x, y))
-        }
-    }
+    createPlane(new THREE.Vector3(0,0,0), new THREE.Vector2(16, 9), videoMaterial)
+    createBox(new THREE.Vector3(2,0,0), new THREE.Vector3(2,2,2), videoMaterial)
+    createSphere(new THREE.Vector3(-2, 0, 0), 2, new THREE.Vector3(1,1,1), videoMaterial).rotation.set(0,-90,0)
 }
 
-function createStaticBox(position, size = {x:1, y:1, z:1}, material = normalMaterial){
-    // Creates a static box with a physics body. Used for the walls of the scene
-
-    const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z)
-    const boxMesh = new THREE.Mesh(boxGeo, material)
-
-    boxMesh.position.copy(position)
-    boxMesh.name = "static_box"
-    scene.add(boxMesh)
-
-    const shape = new CANNON.Box( new CANNON.Vec3(size.x / 2, size.y / 2, size.z / 2) )
-    const body = new CANNON.Body({
-        mass: 0,
-        shape: shape
-    })
-    body.position.copy(position)
-    world.addBody(body)
-}
-
-function createDynamicBox(position, size = {x:1, y:1, z:1}, material = normalMaterial, x = 0, y = 0){
-    // Creates a dynamic physics box with the webcam texture
+function createPlane(position, size, material = normalMaterial){
 
     const planeGeo = new THREE.PlaneGeometry(size.x, size.y)
     const planeMesh = new THREE.Mesh(planeGeo, material)
-    
+
     planeMesh.position.copy(position)
+
     scene.add(planeMesh)
 
-    // Calculating the UV coordinates to display the correct portion of the webcam texture on each box
-    var repeat = new THREE.Vector2( 1 / parameters.xPixels, 1 / parameters.yPixels )
-    var uvAttribute = boxGeo.attributes.uv
-
-    for(var i = 0; i < uvAttribute.count; i+= 4){
-        
-        var newX = x * repeat.x
-        var newY = y * repeat.y
-        
-        uvAttribute.setXY(i, newX, newY + repeat.y)
-        uvAttribute.setXY(i + 1, newX + repeat.x, newY + repeat.y)
-        uvAttribute.setXY(i + 2, newX, newY)
-        uvAttribute.setXY(i + 3, newX + repeat.x, newY)
-
-        uvAttribute.needsUpdate = true
-    }
-
-    const boxMesh = new THREE.Mesh(boxGeo, material)
-
-    boxMesh.position.copy(position)
-    scene.add(boxMesh)
-
-    const shape = new CANNON.Box( new CANNON.Vec3(size.x / 2, size.y / 2, size.z / 2) )
-    const body = new CANNON.Body({
-        mass: 1,
-        shape: shape
-    })
-    body.position.copy(position)
-    world.addBody(body)
-
-    objectsToUpdate.push({ mesh: boxMesh, body: body })
-    body.userData = { startPos: position }
-
-    return body
+    return planeMesh
 }
 
-function createKinematicBox(position, size = {x:1, y:1, z:1}, material = normalMaterial){
-    // Creates a dynamic physics box that is not influenced by gravity and can be moved manually. Used for the box that collapses the cubes.
+function createBox(position, size = {x:1, y:1, z:1}, material = normalMaterial){
+    // Creates a static box with a physics body. Used for the walls of the scene
+
     const boxGeo = new THREE.BoxGeometry(size.x, size.y, size.z)
     const boxMesh = new THREE.Mesh(boxGeo, material)
 
@@ -275,21 +166,17 @@ function createKinematicBox(position, size = {x:1, y:1, z:1}, material = normalM
     return boxMesh
 }
 
-function resetBoxes(){
-    // Resets all the boxes to their initial starting positions and resets rotation and velocity. 
-    console.log("resetting boxes")
-    videoCubes.forEach(element => {
-        element.position.copy(element.userData.startPos)    // initial position
-        element.quaternion.set(0,0,0,1)     //identity quaternion
-        element.velocity.set(0,0,0)         // reset velocity
-    })
-}
+function createSphere(position, radius, scale, material = normalMaterial){
+    
+    const sphereGeo = new THREE.SphereGeometry(radius)
+    const sphereMesh = new THREE.Mesh(sphereGeo, material)
 
-function fireBlock(){
-    // Moves a large invisible block through the bottom of the stack of boxes for an explosion effect
-    console.log("firing block")
-    block.position.set(block.position.x, block.position.y, -10)
-    moveBlock = true
+    sphereMesh.position.copy(position)
+    sphereMesh.scale.copy(scale)
+
+    scene.add(sphereMesh)
+
+    return sphereMesh
 }
 
 // Update /////
@@ -301,36 +188,6 @@ function tick(){
     const elapsedTime = clock.getElapsedTime()
     const deltaTime = elapsedTime - oldElapsedTime
     oldElapsedTime = elapsedTime
-
-    if(parameters.autoRotate){
-        controls.update()
-        var roundedZPos = Math.round(camera.position.z) // Use the rounded z postion of the camera to time events
-
-        if(roundedZPos == -8 && !blockFired){           // Fire the block when the camera reaches he back of the scene
-            fireBlock()
-            blockFired = true
-        }
-
-        if(roundedZPos == 0 && blockFired){             // Resets the boxes when the camera reaches the right side of the scene
-            blockFired = false
-            resetBoxes()
-        }
-    } 
-
-    world.step(1 / 60, deltaTime, 3)
-
-    objectsToUpdate.forEach(element => {                // Update the positions of the three.js meshes with the positions of the physics bodies
-        element.mesh.position.copy(element.body.position)
-        element.mesh.quaternion.copy(element.body.quaternion)
-    })
-
-    if(moveBlock){          // Moves the block 10 units per frame until a point at which it stops
-        block.position.set(block.position.x, block.position.y, block.position.z + 10 * deltaTime)
-        if(block.position.z > 20){
-            console.log("Block finished")
-            moveBlock = false
-        }
-    }
 
     renderer.render(scene, camera)
 
