@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import * as dat from 'lil-gui'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 
 let canvas, renderer, scene, camera, controls                           // scene config and controls
 let sizes, aspectRatio, mouse, clock, oldElapsedTime                    // scene parameters and update variables
@@ -8,6 +9,8 @@ let normalMaterial, transparentMaterial, videoMaterial                  // mater
 let video, videoWholeTex, planeGeometry, planeVideoMesh                 // webcam video
 let debugGui                                                            // UI
 let ambientLight                                                        // lights
+
+let gltfLoader, teapotMesh;
 
 // Array to store parameters used in the debug UI
 const parameters = {
@@ -20,6 +23,7 @@ addSceneElements()      // adds scene elements (wall, cubes)
 function init(){
     // Master function to initialise variables and call other initialisation functions
     mouse = new THREE.Vector2()
+    gltfLoader = new GLTFLoader()
 
     //// Screen
     sizes = { width: window.innerWidth, height: window.innerHeight }
@@ -35,6 +39,7 @@ function init(){
     initScene()
     initGui()
     initWebcam()
+    loadModels()
 }
 
 function initScene(){
@@ -74,7 +79,6 @@ function initGui(){
 
     //debugGui.hide()
 }
-
 
 function initWebcam(){
     // Initialises all components needed to access the webcam
@@ -134,6 +138,30 @@ function getWebcam(testWebcam){
     
         })
     }
+}
+
+function loadModels(){
+    // Loads all models
+
+    gltfLoader.load('/models/utah_teapot.glb',
+    (gltf) => {
+        console.log("Utah teapot loaded")
+        console.log(gltf)   // Write gltf object to console to view model structure
+
+        teapotMesh = gltf.scene
+        scene.add(teapotMesh)
+
+        teapotMesh.position.set(0,-3,1)
+        teapotMesh.scale.set(10,10,10)
+        
+        // This model is split into groups, each group needs to be iterated through and the mesh
+        // inside is assigned a material
+        teapotMesh.children.forEach(element => {
+            element.children.forEach(mesh => {
+                mesh.material = videoMaterial
+            })
+        });
+    })
 }
 
 function addSceneElements(){
