@@ -10,7 +10,9 @@ let video, videoWholeTex, planeGeometry, planeVideoMesh                 // webca
 let debugGui                                                            // UI
 let ambientLight                                                        // lights
 
-let gltfLoader, teapotMesh;
+let gltfLoader, teapotMesh
+let textureLoader 
+let organicColour, organicNormal, organiccHeight, organicAO, organicMat
 
 // Array to store parameters used in the debug UI
 const parameters = {
@@ -24,6 +26,7 @@ function init(){
     // Master function to initialise variables and call other initialisation functions
     mouse = new THREE.Vector2()
     gltfLoader = new GLTFLoader()
+    textureLoader = new THREE.TextureLoader()
 
     //// Screen
     sizes = { width: window.innerWidth, height: window.innerHeight }
@@ -40,6 +43,7 @@ function init(){
     initGui()
     initWebcam()
     loadModels()
+    loadTextures()
 }
 
 function initScene(){
@@ -68,6 +72,7 @@ function initScene(){
     controls.enableDamping = true
 
     ambientLight = new THREE.AmbientLight(0xffffff, 0.7)
+    ambientLight.position.set(-3,2,3)
     scene.add(ambientLight)
 }
 
@@ -142,7 +147,7 @@ function getWebcam(testWebcam){
 
 function loadModels(){
     // Loads all models
-
+    // Utah teapot taken from https://www.cgtrader.com/free-3d-models/furniture/tableware/utah-teapot-c35df3fc-667e-47c4-90c6-9002491ce11b
     gltfLoader.load('/models/utah_teapot.glb',
     (gltf) => {
         console.log("Utah teapot loaded")
@@ -164,10 +169,28 @@ function loadModels(){
     })
 }
 
+function loadTextures(){
+    // Texture loading ///
+
+    organicColour = textureLoader.load('textures/organic/organic_colour.jpg')
+    organicNormal = textureLoader.load('textures/organic/organic_normal.jpg')
+    organiccHeight = textureLoader.load('textures/organic/organic_height.jpg')
+    organicAO = textureLoader.load('textures/organic/organic_ao.jpg')
+
+    // Materials ///
+
+    organicMat = new THREE.MeshStandardMaterial({
+        map: organicColour,
+        normalMap: organicNormal,
+        //aoMap: organicAO,
+        //displacementMap: organiccHeight
+    })
+}
+
 function addSceneElements(){
     createPlane(new THREE.Vector3(0,0,0), new THREE.Vector2(16, 9), videoMaterial)
-    createBox(new THREE.Vector3(2,0,0), new THREE.Vector3(2,2,2), videoMaterial)
-    createSphere(new THREE.Vector3(-2, 0, 0), 2, new THREE.Vector3(1,1,1), videoMaterial).rotation.set(0,-90,0)
+    createBox(new THREE.Vector3(4,0,0), new THREE.Vector3(2,2,2), videoMaterial)
+    createSphere(new THREE.Vector3(-4, 0, 0), 2, new THREE.Vector3(1,1,1), organicMat).rotation.set(0,-90,0)
 }
 
 function createPlane(position, size, material = normalMaterial){
